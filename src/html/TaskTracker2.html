@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .cell-transition { transition: all 0.2s ease; }
+        .row-deleting { opacity: 0.5; pointer-events: none; transition: opacity 0.3s ease; }
+        .delete-btn i { pointer-events: none; }
+        /* Hide scrollbar but keep functionality */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Modal Animation */
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px); }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <!-- Header Section -->
+        <div class="bg-white p-6 border-b border-slate-100">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Weekly Tracker</h1>
+                <div class="flex flex-col sm:flex-row items-center gap-4 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                    <!-- Year Controls -->
+                    <div class="flex items-center gap-2">
+                        <button onclick="changeYear(-1)" class="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors" aria-label="Previous Year">
+                            <i data-lucide="chevrons-left" class="w-5 h-5"></i>
+                        </button>
+                        <span id="yearDisplay" class="font-mono font-semibold w-12 text-center text-slate-700">2024</span>
+                        <button onclick="changeYear(1)" class="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors" aria-label="Next Year">
+                            <i data-lucide="chevrons-right" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                    <div class="h-4 w-px bg-slate-300 hidden sm:block"></div>
+                    <!-- Week Controls -->
+                    <div class="flex items-center gap-2">
+                        <button onclick="changeWeek(-1)" class="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors" aria-label="Previous Week">
+                            <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                        </button>
+                        <div class="text-center w-32">
+                            <div id="weekDisplay" class="font-mono font-semibold text-slate-700">Week 1</div>
+                            <div id="dateRangeDisplay" class="text-xs text-slate-400 font-medium">Jan 1 - Jan 7</div>
+                        </div>
+                        <button onclick="changeWeek(1)" class="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors" aria-label="Next Week">
+                            <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="resetToToday()" class="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+                        Today
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Groups Navigation -->
+        <div class="px-6 py-4 flex items-center gap-4 border-b border-slate-50 overflow-hidden">
+            <button onclick="openGroupModal()" class="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-full text-sm font-bold transition-all border border-emerald-100">
+                <i data-lucide="plus" class="w-4 h-4"></i> Add Group
+            </button>
+            <div class="h-6 w-px bg-slate-200"></div>
+            <div id="groupTabs" class="flex gap-2 overflow-x-auto no-scrollbar">
+                <!-- Groups injected here -->
+            </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="text-slate-400 text-[11px] uppercase tracking-wider font-bold">
+                        <th class="p-6 w-64 bg-white sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">Task Description</th>
+                        <th class="p-4 text-center">Mon</th>
+                        <th class="p-4 text-center">Tue</th>
+                        <th class="p-4 text-center">Wed</th>
+                        <th class="p-4 text-center">Thu</th>
+                        <th class="p-4 text-center">Fri</th>
+                        <th class="p-4 text-center text-blue-500">Sat</th>
+                        <th class="p-4 text-center text-blue-500">Sun</th>
+                        <th class="p-4"></th>
+                    </tr>
+                </thead>
+                <tbody id="taskRows" class="divide-y divide-slate-50">
+                    <!-- Rows injected here -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Add Task Footer -->
+        <div class="p-6 bg-slate-50/50 border-t border-slate-100">
+            <form id="addTaskForm" class="flex flex-col sm:flex-row gap-3">
+                <input type="text" id="taskName" placeholder="Describe the task..."
+                    class="flex-1 px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" required>
+
+                <select id="taskType" class="px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-600 focus:outline-none">
+                    <option value="checklist">Checkbox (Status)</option>
+                    <option value="counter">Counter (Quantity)</option>
+                </select>
+
+                <button type="submit" class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2">
+                    <i data-lucide="plus" class="w-5 h-5"></i> Add Task
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Group Creation Modal -->
+    <div id="groupModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 border border-slate-200">
+            <h2 class="text-xl font-bold text-slate-800 mb-4">Create New Group</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-semibold text-slate-500 block mb-1">Group Name</label>
+                    <input type="text" id="newGroupName" placeholder="e.g. Health, School, Chores"
+                        class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500/20 outline-none">
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button onclick="closeGroupModal()" class="flex-1 px-4 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-all">
+                        Cancel
+                    </button>
+                    <button onclick="submitNewGroup()" class="flex-1 px-4 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all">
+                        Create
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Box -->
+    <div id="errorBox" class="hidden fixed bottom-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl shadow-lg z-50">
+        <span id="errorText">Error message here.</span>
+    </div>
+
+    <script>
+        const API_BASE = 'https://www.kempenexpress.nl/api';
+        let currentViewDate = new Date();
+        let tasks = [];
+        let progress = {};
+        let selectedGroup = 'General';
+        let allGroups = ['General'];
+
+        function showError(msg) {
+            const box = document.getElementById('errorBox');
+            document.getElementById('errorText').innerText = msg;
+            box.classList.remove('hidden');
+            setTimeout(() => box.classList.add('hidden'), 3000);
+        }
+
+        // --- Group Logic ---
+        function openGroupModal() {
+            document.getElementById('groupModal').classList.remove('hidden');
+            document.getElementById('newGroupName').focus();
+        }
+
+        function closeGroupModal() {
+            document.getElementById('groupModal').classList.add('hidden');
+            document.getElementById('newGroupName').value = '';
+        }
+
+        async function submitNewGroup() {
+            const name = document.getElementById('newGroupName').value.trim();
+            if (!name) return;
+
+            try {
+                // Assuming your backend handles group creation or just associating it with a task
+                // We'll update the local state first
+                if (!allGroups.includes(name)) {
+                    allGroups.push(name);
+                }
+                selectedGroup = name;
+                closeGroupModal();
+                render();
+            } catch (err) {
+                showError("Could not create group.");
+            }
+        }
+
+        // --- Date Helpers ---
+        function getISOWeek(date) {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+            return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+        }
+
+        function changeYear(offset) {
+            currentViewDate.setFullYear(currentViewDate.getFullYear() + offset);
+            render();
+        }
+
+        function changeWeek(offset) {
+            currentViewDate.setDate(currentViewDate.getDate() + (offset * 7));
+            render();
+        }
+
+        function resetToToday() {
+            currentViewDate = new Date();
+            render();
+        }
+
+        // --- API & State ---
+        async function fetchData() {
+            try {
+                const res = await fetch(`${API_BASE}/week-data`);
+                if (!res.ok) throw new Error("Fetch failed");
+                const data = await res.json();
+                tasks = data.tasks || [];
+                progress = data.progress || {};
+
+                // Update groups list based on existing tasks + General
+                const taskGroups = [...new Set(tasks.map(h => h.group))];
+                allGroups = [...new Set(['General', ...taskGroups])];
+
+                if (!allGroups.includes(selectedGroup)) {
+                    selectedGroup = allGroups[0];
+                }
+                render();
+            } catch (err) {
+                console.error(err);
+                showError("Server unavailable.");
+            }
+        }
+
+        async function addTask(name, type) {
+            try {
+                const res = await fetch(`${API_BASE}/tasks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, groupName: selectedGroup, categoryName: type })
+                });
+                if (res.ok) {
+                    document.getElementById('taskName').value = '';
+                    await fetchData();
+                }
+            } catch (err) { showError("Failed to add task."); }
+        }
+
+        async function deleteTask(taskId) {
+            if (!confirm("Remove this task?")) return;
+            const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+            if (row) row.classList.add('row-deleting');
+            try {
+                const res = await fetch(`${API_BASE}/tasks/${taskId}`, { method: 'DELETE' });
+                if (res.ok || res.status === 204) await fetchData();
+                else {
+                    if (row) row.classList.remove('row-deleting');
+                    showError("Delete failed.");
+                }
+            } catch (err) {
+                if (row) row.classList.remove('row-deleting');
+                showError("Network error.");
+            }
+        }
+
+        async function toggleCell(taskId, dateStr, currentStatus, type, direction = 1) {
+            let nextStatus;
+            if (type === 'counter') {
+                nextStatus = (currentStatus || 0) + direction;
+                if (nextStatus < 0) nextStatus = 0;
+            } else {
+                nextStatus = ((currentStatus || 0) + 1) % 2;
+            }
+
+            if (nextStatus === currentStatus) return;
+
+            progress[`${taskId}_${dateStr}`] = nextStatus;
+            render();
+
+            try {
+                await fetch(`${API_BASE}/progress`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ taskId, date: dateStr, status: nextStatus })
+                });
+            } catch (err) { fetchData(); }
+        }
+
+        // --- Event Listeners ---
+        document.addEventListener('click', (e) => {
+            const deleteBtn = e.target.closest('.delete-btn');
+            if (deleteBtn) {
+                e.preventDefault(); e.stopPropagation();
+                deleteTask(deleteBtn.getAttribute('data-id'));
+                return;
+            }
+            const cellBtn = e.target.closest('.cell-btn');
+            if (cellBtn) {
+                toggleCell(
+                    cellBtn.getAttribute('data-task-id'),
+                    cellBtn.getAttribute('data-date'),
+                    parseInt(cellBtn.getAttribute('data-status')),
+                    cellBtn.getAttribute('data-type'),
+                    1
+                );
+                return;
+            }
+            const tabBtn = e.target.closest('.group-tab');
+            if (tabBtn) {
+                selectedGroup = tabBtn.getAttribute('data-group');
+                render();
+            }
+        });
+
+        document.addEventListener('contextmenu', (e) => {
+            const cellBtn = e.target.closest('.cell-btn');
+            if (cellBtn && cellBtn.getAttribute('data-type') === 'counter') {
+                e.preventDefault();
+                toggleCell(
+                    cellBtn.getAttribute('data-task-id'),
+                    cellBtn.getAttribute('data-date'),
+                    parseInt(cellBtn.getAttribute('data-status')),
+                    cellBtn.getAttribute('data-type'),
+                    -1
+                );
+            }
+        });
+
+        document.getElementById('addTaskForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            addTask(document.getElementById('taskName').value, document.getElementById('taskType').value);
+        });
+
+        // --- Rendering ---
+        function getWeekDates(date) {
+            const start = new Date(date);
+            const day = start.getDay();
+            const diff = start.getDate() - day + (day === 0 ? -6 : 1);
+            start.setDate(diff);
+            return Array.from({length: 7}, (_, i) => {
+                const d = new Date(start);
+                d.setDate(start.getDate() + i);
+                return d.toISOString().split('T')[0];
+            });
+        }
+
+        function formatDisplayDate(dateStr) {
+            const d = new Date(dateStr);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
+        function getIconForLevel(status, type) {
+            if (type === 'counter') {
+                return `<span class="font-bold text-blue-600 pointer-events-none select-none">${status || 0}</span>`;
+            }
+            if (status === 1) return `<i data-lucide="check-circle-2" class="w-6 h-6 text-emerald-500 fill-emerald-50 pointer-events-none"></i>`;
+            return `<div class="w-5 h-5 rounded-md border-2 border-slate-200 bg-white pointer-events-none"></div>`;
+        }
+
+        function render() {
+            const weekDates = getWeekDates(currentViewDate);
+            const year = currentViewDate.getFullYear();
+            const week = getISOWeek(currentViewDate);
+
+            document.getElementById('yearDisplay').innerText = year;
+            document.getElementById('weekDisplay').innerText = `Week ${week}`;
+            document.getElementById('dateRangeDisplay').innerText = `${formatDisplayDate(weekDates[0])} - ${formatDisplayDate(weekDates[6])}`;
+
+            // Render Groups
+            document.getElementById('groupTabs').innerHTML = allGroups.map(g => `
+                <button data-group="${g}"
+                    class="group-tab px-5 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${selectedGroup === g ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20' : 'text-slate-500 hover:bg-slate-100 border-transparent'}">
+                    ${g}
+                </button>
+            `).join('');
+
+            const filtered = tasks.filter(h => h.group === selectedGroup);
+            document.getElementById('taskRows').innerHTML = filtered.map(task => `
+                <tr data-task-id="${task.id}" class="group hover:bg-slate-50/50 transition-colors">
+                    <td class="p-6 sticky left-0 bg-white group-hover:bg-slate-50/50 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                        <div class="font-semibold text-slate-700">${task.name}</div>
+                        <div class="text-[10px] text-slate-400 font-bold uppercase mt-0.5">${task.type}</div>
+                    </td>
+                    ${weekDates.map(date => {
+                        const status = progress[`${task.id}_${date}`] || 0;
+                        return `
+                        <td class="p-2 text-center">
+                            <button class="cell-btn w-12 h-12 mx-auto rounded-2xl border border-transparent hover:border-slate-200 hover:bg-white flex items-center justify-center cell-transition select-none"
+                                data-task-id="${task.id}" data-date="${date}" data-status="${status}" data-type="${task.type}">
+                                ${getIconForLevel(status, task.type)}
+                            </button>
+                        </td>`;
+                    }).join('')}
+                    <td class="p-4 text-right">
+                        <button class="delete-btn p-3 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all relative z-30" data-id="${task.id}">
+                            <i data-lucide="trash-2" class="w-5 h-5"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+
+            lucide.createIcons();
+        }
+
+        window.onload = fetchData;
+    </script>
+</body>
+</html>

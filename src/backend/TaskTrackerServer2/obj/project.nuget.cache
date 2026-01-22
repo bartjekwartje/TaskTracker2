@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "dgSpecHash": "LsPNKFGH2Lc=",
+  "success": true,
+  "projectFilePath": "/home/developer/repos/DotNetSolutions/TaskTrackerSolution2/src/backend/TaskTrackerServer2/TaskTrackerServer2.csproj",
+  "expectedPackageFiles": [
+    "/home/developer/.nuget/packages/dapper/2.1.66/dapper.2.1.66.nupkg.sha512",
+    "/home/developer/.nuget/packages/microsoft.openapi/2.3.0/microsoft.openapi.2.3.0.nupkg.sha512",
+    "/home/developer/.nuget/packages/npgsql/10.0.1/npgsql.10.0.1.nupkg.sha512",
+    "/home/developer/.nuget/packages/swashbuckle.aspnetcore.swagger/10.1.0/swashbuckle.aspnetcore.swagger.10.1.0.nupkg.sha512",
+    "/home/developer/.nuget/packages/swashbuckle.aspnetcore.swaggergen/10.1.0/swashbuckle.aspnetcore.swaggergen.10.1.0.nupkg.sha512",
+    "/home/developer/.nuget/packages/swashbuckle.aspnetcore.swaggerui/10.1.0/swashbuckle.aspnetcore.swaggerui.10.1.0.nupkg.sha512"
+  ],
+  "logs": []
+}

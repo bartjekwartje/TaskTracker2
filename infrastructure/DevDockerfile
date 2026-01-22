@@ -1,0 +1,40 @@
+# Stage 1: Runtime Base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+WORKDIR /app
+EXPOSE 8080
+EXPOSE 8081
+
+ENV ASPNETCORE_URLS=http://+:8080
+
+# --- FIX: Install dependencies here so they exist in the runtime environment ---
+RUN apt-get update && apt-get install -y \
+    tzdata \
+    libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
+# -----------------------------------------------------------------------------
+
+# Stage 2: SDK Build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY ["./src/backend/TaskTrackerServer2/TaskTrackerServer2.csproj", "TaskTrackerServer2/"]
+RUN dotnet restore "TaskTrackerServer2/TaskTrackerServer2.csproj"
+
+COPY ["./src/backend/TaskTrackerServer2/.", "TaskTrackerServer2/"]
+
+WORKDIR "/src/TaskTrackerServer2"
+RUN dotnet build "TaskTrackerServer2.csproj" -c Debug -o /app/build
+
+# Stage 3: Final
+FROM base AS final
+WORKDIR /app
+COPY --from=build /app/build .
+
+ENV DB_HOST_IP=100.100.104.47
+ENV DB_PORT=5432
+ENV DB_USER=postgres
+ENV DB_NAME=TaskTracker2
+ENV DB_PASS=1peo2HHeel@
+ENV ASPNETCORE_ENVIRONMENT=Development
+
+ENTRYPOINT ["dotnet", "TaskTrackerServer2.dll"]
