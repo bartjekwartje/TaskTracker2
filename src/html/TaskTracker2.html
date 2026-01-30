@@ -12,6 +12,7 @@
         .cell-transition { transition: all 0.2s ease; }
         .row-deleting { opacity: 0.5; pointer-events: none; transition: opacity 0.3s ease; }
         .delete-btn i { pointer-events: none; }
+        .move-btn i { pointer-events: none; }
         /* Hide scrollbar but keep functionality */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -146,6 +147,7 @@
         let progress = {};
         let selectedGroup = 'General';
         let allGroups = ['General'];
+        let moveMenu = null; // For the move task dropdown
         // API Configuration
         let currentApiEnvironment;
 
@@ -281,6 +283,56 @@
             }
         }
 
+        async function moveTask(taskId, newGroup) {
+            const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+            if (row) row.classList.add('row-deleting'); // Optimistic fade out
+
+            try {
+                const res = await fetch(`${API_BASE}/tasks/${taskId}/move`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ newGroupName: newGroup })
+                });
+                if (!res.ok) throw new Error('Move failed');
+                await fetchData();
+            } catch (err) {
+                showError("Failed to move task.");
+                if (row) row.classList.remove('row-deleting');
+            }
+        }
+
+        function openMoveMenu(taskId, currentGroup, button) {
+            if (moveMenu) moveMenu.remove();
+
+            const otherGroups = allGroups.filter(g => g !== currentGroup);
+            if (otherGroups.length === 0) {
+                showError("No other groups exist to move this task to.");
+                return;
+            }
+
+            moveMenu = document.createElement('div');
+            moveMenu.className = 'absolute z-50 mt-1 w-48 bg-white rounded-lg shadow-xl border border-slate-100 py-1';
+            moveMenu.innerHTML = otherGroups.map(group =>
+                `<a href="#" class="move-to-group-btn block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50" data-task-id="${taskId}" data-group="${group}">${group}</a>`
+            ).join('');
+
+            document.body.appendChild(moveMenu);
+            const rect = button.getBoundingClientRect();
+            moveMenu.style.top = `${rect.bottom + window.scrollY}px`;
+            moveMenu.style.left = `${rect.right + window.scrollX - moveMenu.offsetWidth}px`;
+
+            setTimeout(() => {
+                document.addEventListener('click', closeMoveMenu, { once: true });
+            }, 0);
+        }
+
+        function closeMoveMenu() {
+            if (moveMenu) {
+                moveMenu.remove();
+                moveMenu = null;
+            }
+        }
+
         async function toggleCell(taskId, dateStr, currentStatus, type, direction = 1) {
             let nextStatus;
             if (type === 'counter') {
@@ -314,6 +366,30 @@
                     deleteTask(deleteBtn.getAttribute('data-id'));
                     return;
                 }
+
+                const moveBtn = e.target.closest('.move-btn');
+                if (moveBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openMoveMenu(
+                        moveBtn.getAttribute('data-task-id'),
+                        moveBtn.getAttribute('data-task-group'),
+                        moveBtn
+                    );
+                    return;
+                }
+
+                const moveMenuItem = e.target.closest('.move-to-group-btn');
+                if (moveMenuItem) {
+                    e.preventDefault();
+                    moveTask(
+                        moveMenuItem.getAttribute('data-task-id'),
+                        moveMenuItem.getAttribute('data-group')
+                    );
+                    // The menu will be closed by the document's 'once' listener
+                    return;
+                }
+
                 const cellBtn = e.target.closest('.cell-btn');
                 if (cellBtn) {
                     toggleCell(
@@ -419,9 +495,15 @@
                         </td>`;
                     }).join('')}
                     <td class="p-4 text-right">
-                        <button class="delete-btn p-3 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all relative z-30" data-id="${task.id}">
-                            <i data-lucide="trash-2" class="w-5 h-5"></i>
-                        </button>
+                        <div class="flex items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button class="move-btn p-2 text-slate-400 hover:text-blue-500"
+                                data-task-id="${task.id}" data-task-group="${task.group}">
+                                <i data-lucide="folder-move" class="w-5 h-5"></i>
+                            </button>
+                            <button class="delete-btn p-2 text-slate-400 hover:text-red-500" data-id="${task.id}">
+                                <i data-lucide="trash-2" class="w-5 h-5"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>
             `).join('');
