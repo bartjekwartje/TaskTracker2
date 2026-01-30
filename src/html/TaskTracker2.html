@@ -140,12 +140,32 @@
     </div>
 
     <script>
-        const API_BASE = 'https://www.kempenexpress.nl/TaskTracker2/api';
+        let API_BASE;
         let currentViewDate = new Date();
         let tasks = [];
         let progress = {};
         let selectedGroup = 'General';
         let allGroups = ['General'];
+        // API Configuration
+        let currentApiEnvironment;
+
+        const API_CONFIG = {
+            production: "https://www.kempenexpress.nl/TaskTracker2/api",
+            development: "https://dev.kempenexpress.nl/TaskTracker2/api"
+        };
+
+        // Auto-detect environment based on hostname
+        function detectEnvironment() {
+            const hostname = window.location.hostname;
+            if (hostname.includes('dev.kempenexpress.nl')) return 'dev';
+            if (hostname.includes('www.kempenexpress.nl')) return 'prod';
+            return 'prod'; // Default to production
+        }
+
+
+        function setApiBase() {
+            API_BASE = currentApiEnvironment === 'dev' ? API_CONFIG.development : API_CONFIG.production;
+        }
 
         function showError(msg) {
             const box = document.getElementById('errorBox');
@@ -284,49 +304,58 @@
             } catch (err) { fetchData(); }
         }
 
-        // --- Event Listeners ---
-        document.addEventListener('click', (e) => {
-            const deleteBtn = e.target.closest('.delete-btn');
-            if (deleteBtn) {
-                e.preventDefault(); e.stopPropagation();
-                deleteTask(deleteBtn.getAttribute('data-id'));
-                return;
-            }
-            const cellBtn = e.target.closest('.cell-btn');
-            if (cellBtn) {
-                toggleCell(
-                    cellBtn.getAttribute('data-task-id'),
-                    cellBtn.getAttribute('data-date'),
-                    parseInt(cellBtn.getAttribute('data-status')),
-                    cellBtn.getAttribute('data-type'),
-                    1
-                );
-                return;
-            }
-            const tabBtn = e.target.closest('.group-tab');
-            if (tabBtn) {
-                selectedGroup = tabBtn.getAttribute('data-group');
-                render();
-            }
-        });
+        // --- Event Listeners & Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Click handler for delete buttons, cell buttons, and group tabs
+            document.addEventListener('click', (e) => {
+                const deleteBtn = e.target.closest('.delete-btn');
+                if (deleteBtn) {
+                    e.preventDefault(); e.stopPropagation();
+                    deleteTask(deleteBtn.getAttribute('data-id'));
+                    return;
+                }
+                const cellBtn = e.target.closest('.cell-btn');
+                if (cellBtn) {
+                    toggleCell(
+                        cellBtn.getAttribute('data-task-id'),
+                        cellBtn.getAttribute('data-date'),
+                        parseInt(cellBtn.getAttribute('data-status')),
+                        cellBtn.getAttribute('data-type'),
+                        1
+                    );
+                    return;
+                }
+                const tabBtn = e.target.closest('.group-tab');
+                if (tabBtn) {
+                    selectedGroup = tabBtn.getAttribute('data-group');
+                    render();
+                }
+            });
 
-        document.addEventListener('contextmenu', (e) => {
-            const cellBtn = e.target.closest('.cell-btn');
-            if (cellBtn && cellBtn.getAttribute('data-type') === 'counter') {
+            // Right-click handler for counter decrement
+            document.addEventListener('contextmenu', (e) => {
+                const cellBtn = e.target.closest('.cell-btn');
+                if (cellBtn && cellBtn.getAttribute('data-type') === 'counter') {
+                    e.preventDefault();
+                    toggleCell(
+                        cellBtn.getAttribute('data-task-id'),
+                        cellBtn.getAttribute('data-date'),
+                        parseInt(cellBtn.getAttribute('data-status')),
+                        cellBtn.getAttribute('data-type'),
+                        -1
+                    );
+                }
+            });
+
+            // Form submit handler for adding tasks
+            document.getElementById('addTaskForm').addEventListener('submit', (e) => {
                 e.preventDefault();
-                toggleCell(
-                    cellBtn.getAttribute('data-task-id'),
-                    cellBtn.getAttribute('data-date'),
-                    parseInt(cellBtn.getAttribute('data-status')),
-                    cellBtn.getAttribute('data-type'),
-                    -1
-                );
-            }
-        });
+                addTask(document.getElementById('taskName').value, document.getElementById('taskType').value);
+            });
 
-        document.getElementById('addTaskForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            addTask(document.getElementById('taskName').value, document.getElementById('taskType').value);
+            currentApiEnvironment = detectEnvironment();
+            setApiBase();            // Initialize the application
+            fetchData();
         });
 
         // --- Rendering ---
@@ -399,8 +428,6 @@
 
             lucide.createIcons();
         }
-
-        window.onload = fetchData;
     </script>
 </body>
 </html>
