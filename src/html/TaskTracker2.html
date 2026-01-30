@@ -496,12 +496,13 @@
                     }).join('')}
                     <td class="p-4 text-right">
                         <div class="flex items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button class="move-btn p-2 text-slate-400 hover:text-blue-500"
-                                data-task-id="${task.id}" data-task-group="${task.group}">
-                                <i data-lucide="folder-move" class="w-5 h-5 pointer-events-none"></i>
+                            <button class="move-btn p-2 text-slate-400 hover:text-blue-500" data-task-id="..." data-task-group="General">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder-move w-5 h-5 pointer-events-none">
+                                    <path d="m9 18 3-3-3-3"/><path d="M12 15H3"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v2"/>
+                                </svg>
                             </button>
                             <button class="delete-btn p-2 text-slate-400 hover:text-red-500" data-id="${task.id}">
-                                <i data-lucide="trash-2" class="w-5 h-5 pointer-events-none"></i>
+                                <i data-lucide="trash-2" class="w-5 h-5"></i>
                             </button>
                         </div>
                     </td>
