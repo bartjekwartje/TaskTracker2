@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Habit Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Custom Scrollbar for table container */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .cell-btn {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .cell-btn:active {
+            transform: scale(0.9);
+        }
+
+        /* Shape Animations */
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            70% { transform: scale(1.2); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .shape-icon {
+            animation: popIn 0.3s ease-out forwards;
+        }
+
+        /* Loading Overlay */
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            backdrop-filter: blur(2px);
+            border-radius: 1rem;
+            transition: opacity 0.2s;
+        }
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e2e8f0;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .hidden-overlay {
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-8 px-4 text-slate-800">
+
+<div class="w-full max-w-5xl bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100 relative">
+
+    <!-- Loading Indicator -->
+    <div id="loadingOverlay" class="loading-overlay hidden-overlay">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <!-- Header / Controls -->
+    <div class="bg-white p-6 border-b border-slate-100">
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+
+            <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Weekly Tracker</h1>
+
+            <div class="flex flex-col sm:flex-row items-center gap-4 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                <!-- Year Controls -->
+                <div class="flex items-center gap-2">
+                    <button onclick="changeYear(-1)" class="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors" aria-label="Previous Year">
+                        <i data-lucide="chevrons-left" class="w-5 h-5"></i>
+                    </button>
+                    <span id="yearDisplay" class="font-mono font-semibold w-12 text-center text-slate-700">2024</span>
+                    <button onclick="changeYear(1)" class="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors" aria-label="Next Year">
+                        <i data-lucide="chevrons-right" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <div class="h-4 w-px bg-slate-300 hidden sm:block"></div>
+
+                <!-- Week Controls -->
+                <div class="flex items-center gap-2">
+                    <button onclick="changeWeek(-1)" class="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors" aria-label="Previous Week">
+                        <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                    </button>
+                    <div class="text-center w-32">
+                        <div id="weekDisplay" class="font-mono font-semibold text-slate-700">Week 10</div>
+                        <div id="dateRangeDisplay" class="text-xs text-slate-400 font-medium">Jan 1 - Jan 7</div>
+                    </div>
+                    <button onclick="changeWeek(1)" class="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors" aria-label="Next Week">
+                        <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex gap-2">
+                <button onclick="resetToToday()" class="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+                    Today
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Table Area -->
+    <div class="overflow-x-auto">
+        <table class="w-full min-w-[800px] border-collapse">
+            <thead>
+            <tr class="bg-slate-50 border-b border-slate-200">
+                <th class="p-4 text-left font-semibold text-slate-500 w-64 sticky left-0 bg-slate-50 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">Task</th>
+                <th class="p-3 w-24 text-center border-l border-slate-100"><div class="flex flex-col"><span class="text-xs font-bold text-slate-400 uppercase">Mon</span><span class="text-sm font-semibold text-slate-700" id="th-0"></span></div></th>
+                <th class="p-3 w-24 text-center border-l border-slate-100"><div class="flex flex-col"><span class="text-xs font-bold text-slate-400 uppercase">Tue</span><span class="text-sm font-semibold text-slate-700" id="th-1"></span></div></th>
+                <th class="p-3 w-24 text-center border-l border-slate-100"><div class="flex flex-col"><span class="text-xs font-bold text-slate-400 uppercase">Wed</span><span class="text-sm font-semibold text-slate-700" id="th-2"></span></div></th>
+                <th class="p-3 w-24 text-center border-l border-slate-100"><div class="flex flex-col"><span class="text-xs font-bold text-slate-400 uppercase">Thu</span><span class="text-sm font-semibold text-slate-700" id="th-3"></span></div></th>
+                <th class="p-3 w-24 text-center border-l border-slate-100"><div class="flex flex-col"><span class="text-xs font-bold text-slate-400 uppercase">Fri</span><span class="text-sm font-semibold text-slate-700" id="th-4"></span></div></th>
+                <th class="p-3 w-24 text-center border-l border-slate-100 bg-slate-50/50"><div class="flex flex-col"><span class="text-xs font-bold text-slate-400 uppercase">Sat</span><span class="text-sm font-semibold text-indigo-600" id="th-5"></span></div></th>
+                <th class="p-3 w-24 text-center border-l border-slate-100 bg-slate-50/50"><div class="flex flex-col"><span class="text-xs font-bold text-slate-400 uppercase">Sun</span><span class="text-sm font-semibold text-indigo-600" id="th-6"></span></div></th>
+                <th class="p-2 w-16 text-center"></th>
+            </tr>
+            </thead>
+            <tbody id="taskTableBody"></tbody>
+        </table>
+    </div>
+
+    <!-- Add Task Footer -->
+    <div class="p-4 bg-slate-50 border-t border-slate-200">
+        <form onsubmit="handleAddTask(event)" class="flex gap-2 max-w-md">
+            <input
+                    type="text"
+                    id="newTaskInput"
+                    placeholder="Add a new task..."
+                    class="flex-1 px-4 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                    autocomplete="off"
+            >
+            <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors shadow-sm flex items-center gap-2">
+                <i data-lucide="plus" class="w-4 h-4"></i> Add
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Legend -->
+<div class="mt-8 flex flex-wrap justify-center gap-6 text-sm text-slate-500">
+    <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded border border-slate-200 bg-white shadow-sm"></div>
+        <span>Empty</span>
+    </div>
+    <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded border border-slate-200 bg-white flex items-center justify-center shadow-sm text-blue-500">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+        </div>
+        <span>Done</span>
+    </div>
+    <div class="flex items-center gap-2 text-orange-500">
+        <div class="w-6 h-6 rounded border border-slate-200 bg-white flex items-center justify-center shadow-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4"><circle cx="12" cy="12" r="9"/></svg>
+        </div>
+        <span>Partial</span>
+    </div>
+    <div class="flex items-center gap-2 text-green-600">
+        <div class="w-6 h-6 rounded border border-slate-200 bg-white flex items-center justify-center shadow-sm">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </div>
+        <span>Important</span>
+    </div>
+    <div class="flex items-center gap-2 text-purple-600">
+        <div class="w-6 h-6 rounded border border-slate-200 bg-white flex items-center justify-center shadow-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 12l10 10 10-10L12 2z"/></svg>
+        </div>
+        <span>Milestone</span>
+    </div>
+</div>
+
+<script>
+    const API_CONFIG = {
+        useMock: false,
+        // Removed port 5000 to default back to port 80
+        baseUrl: 'https://www.kempenexpress.nl/api',
+        simulatedLatency: 400
+    };
+
+    const api = {
+        delay: (ms) => new Promise(resolve => setTimeout(resolve, ms)),
+
+        getWeekData: async (year, week) => {
+            if (API_CONFIG.useMock) {
+                await api.delay(API_CONFIG.simulatedLatency);
+                const tasks = JSON.parse(localStorage.getItem('habitTracker_tasks') || '[]');
+                const progress = JSON.parse(localStorage.getItem('habitTracker_progress') || '{}');
+                if (tasks.length === 0) {
+                    const defaults = [
+                        { id: 't1', name: 'Morning Jog' },
+                        { id: 't2', name: 'Read 30 mins' },
+                        { id: 't3', name: 'Drink 2L Water' }
+                    ];
+                    localStorage.setItem('habitTracker_tasks', JSON.stringify(defaults));
+                    return { tasks: defaults, progress: {} };
+                }
+                return { tasks, progress };
+            } else {
+                const response = await fetch(`${API_CONFIG.baseUrl}/week-data?year=${year}&week=${week}`);
+                return await response.json();
+            }
+        },
+
+        addTask: async (name) => {
+            if (API_CONFIG.useMock) {
+                await api.delay(API_CONFIG.simulatedLatency);
+                const tasks = JSON.parse(localStorage.getItem('habitTracker_tasks') || '[]');
+                const newTask = { id: 'task_' + Date.now(), name };
+                tasks.push(newTask);
+                localStorage.setItem('habitTracker_tasks', JSON.stringify(tasks));
+                return newTask;
+            } else {
+                const response = await fetch(`${API_CONFIG.baseUrl}/tasks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name })
+                });
+                return await response.json();
+            }
+        },
+
+        updateProgress: async (taskId, date, status) => {
+            if (API_CONFIG.useMock) {
+                const progress = JSON.parse(localStorage.getItem('habitTracker_progress') || '{}');
+                const key = `${taskId}_${date}`;
+                if (status === 0) delete progress[key];
+                else progress[key] = status;
+                localStorage.setItem('habitTracker_progress', JSON.stringify(progress));
+                return { success: true, newStatus: status };
+            } else {
+                const response = await fetch(`${API_CONFIG.baseUrl}/progress`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ taskId, date, status })
+                });
+                return await response.json();
+            }
+        },
+
+        deleteTask: async (id) => {
+            if (API_CONFIG.useMock) {
+                await api.delay(API_CONFIG.simulatedLatency);
+                let tasks = JSON.parse(localStorage.getItem('habitTracker_tasks') || '[]');
+                tasks = tasks.filter(t => t.id !== id);
+                localStorage.setItem('habitTracker_tasks', JSON.stringify(tasks));
+                return { success: true };
+            } else {
+                await fetch(`${API_CONFIG.baseUrl}/tasks/${id}`, { method: 'DELETE' });
+                return { success: true };
+            }
+        }
+    };
+
+    let state = {
+        currentDate: new Date(),
+        tasks: [],
+        progress: {},
+        isLoading: false
+    };
+
+    function getWeekNumber(d) {
+        d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+        var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        var weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        return { year: d.getUTCFullYear(), week: weekNo };
+    }
+
+    function getMonday(d) {
+        d = new Date(d);
+        var day = d.getDay(),
+            diff = d.getDate() - day + (day == 0 ? -6 : 1);
+        return new Date(d.setDate(diff));
+    }
+
+    function formatHeaderDate(date) {
+        return `${date.getDate()}/${date.getMonth() + 1}`;
+    }
+
+    function formatDateKey(date) {
+        return date.toISOString().split('T')[0];
+    }
+
+    function getCurrentWeekDates() {
+        const monday = getMonday(state.currentDate);
+        const dates = [];
+        for (let i = 0; i < 7; i++) {
+            const nextDay = new Date(monday);
+            nextDay.setDate(monday.getDate() + i);
+            dates.push(nextDay);
+        }
+        return dates;
+    }
+
+    function setLoading(loading) {
+        state.isLoading = loading;
+        const overlay = document.getElementById('loadingOverlay');
+        if (loading) overlay.classList.remove('hidden-overlay');
+        else overlay.classList.add('hidden-overlay');
+    }
+
+    async function init() {
+        lucide.createIcons();
+        await refreshData();
+    }
+
+    async function refreshData() {
+        setLoading(true);
+        try {
+            const weekInfo = getWeekNumber(state.currentDate);
+            const data = await api.getWeekData(weekInfo.year, weekInfo.week);
+            state.tasks = data.tasks || [];
+            state.progress = data.progress || {};
+            render();
+        } catch (error) {
+            console.error("Failed to load data", error);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function handleAddTask(e) {
+        e.preventDefault();
+        const input = document.getElementById('newTaskInput');
+        const name = input.value.trim();
+        if (!name) return;
+        setLoading(true);
+        try {
+            const newTask = await api.addTask(name);
+            state.tasks.push(newTask);
+            input.value = '';
+            render();
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function removeTask(id) {
+        if(confirm('Delete this task?')) {
+            setLoading(true);
+            try {
+                await api.deleteTask(id);
+                state.tasks = state.tasks.filter(t => t.id !== id);
+                render();
+            } finally {
+                setLoading(false);
+            }
+        }
+    }
+
+    async function toggleCell(taskId, dateKey) {
+        const key = `${taskId}_${dateKey}`;
+        const currentStatus = state.progress[key] || 0;
+        let nextStatus = (currentStatus + 1) % 5;
+        const previousStatus = currentStatus;
+
+        if (nextStatus === 0) delete state.progress[key];
+        else state.progress[key] = nextStatus;
+
+        const btn = document.getElementById(`btn-${key}`);
+        if(btn) {
+            btn.innerHTML = getShapeIcon(nextStatus);
+            btn.className = `cell-btn w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-200 hover:bg-slate-50 ${getStatusColor(nextStatus)}`;
+        }
+
+        try {
+            await api.updateProgress(taskId, dateKey, nextStatus);
+        } catch (err) {
+            state.progress[key] = previousStatus;
+            render();
+        }
+    }
+
+    function changeWeek(delta) {
+        state.currentDate.setDate(state.currentDate.getDate() + (delta * 7));
+        refreshData();
+    }
+
+    function changeYear(delta) {
+        state.currentDate.setFullYear(state.currentDate.getFullYear() + delta);
+        refreshData();
+    }
+
+    function resetToToday() {
+        state.currentDate = new Date();
+        refreshData();
+    }
+
+    function getStatusColor(status) {
+        switch(status) {
+            case 1: return 'text-blue-500 bg-blue-50 border border-blue-100 shadow-sm';
+            case 2: return 'text-orange-500 bg-orange-50 border border-orange-100 shadow-sm';
+            case 3: return 'text-green-600 bg-green-50 border border-green-100 shadow-sm';
+            case 4: return 'text-purple-600 bg-purple-50 border border-purple-100 shadow-sm';
+            default: return 'text-slate-300 hover:border-slate-300 border border-transparent';
+        }
+    }
+
+    function getShapeIcon(status) {
+        switch(status) {
+            case 1: return `<svg class="shape-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>`;
+            case 2: return `<svg class="shape-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4"><circle cx="12" cy="12" r="8"/></svg>`;
+            case 3: return `<svg class="shape-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
+            case 4: return `<svg class="shape-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 12l10 10 10-10L12 2z"/></svg>`;
+            default: return `<div class="w-1.5 h-1.5 rounded-full bg-slate-200"></div>`;
+        }
+    }
+
+    function render() {
+        const weekDates = getCurrentWeekDates();
+        const weekInfo = getWeekNumber(weekDates[0]);
+        document.getElementById('yearDisplay').textContent = weekInfo.year;
+        document.getElementById('weekDisplay').textContent = `Week ${weekInfo.week}`;
+        document.getElementById('dateRangeDisplay').textContent = `${weekDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekDates[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+
+        weekDates.forEach((date, index) => {
+            const el = document.getElementById(`th-${index}`);
+            el.textContent = formatHeaderDate(date);
+            const isToday = formatDateKey(new Date()) === formatDateKey(date);
+            const parentTh = el.closest('th');
+            if (isToday) {
+                parentTh.classList.add('bg-blue-50/80', 'ring-inset', 'ring-2', 'ring-blue-100');
+                el.classList.add('text-blue-700');
+            } else {
+                parentTh.classList.remove('bg-blue-50/80', 'ring-inset', 'ring-2', 'ring-blue-100');
+                el.classList.remove('text-blue-700');
+            }
+        });
+
+        const tbody = document.getElementById('taskTableBody');
+        tbody.innerHTML = '';
+        state.tasks.forEach(task => {
+            const tr = document.createElement('tr');
+            tr.className = "group hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0";
+
+            const tdName = document.createElement('td');
+            tdName.className = "p-4 sticky left-0 bg-white group-hover:bg-slate-50/50 z-10 border-r border-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]";
+            tdName.innerHTML = `<span class="font-medium text-slate-700 block truncate">${task.name}</span>`;
+            tr.appendChild(tdName);
+
+            weekDates.forEach(date => {
+                const dateKey = formatDateKey(date);
+                const td = document.createElement('td');
+                td.className = "p-2 text-center border-l border-slate-100/50";
+                const progressKey = `${task.id}_${dateKey}`;
+                const status = state.progress[progressKey] || 0;
+                const btn = document.createElement('button');
+                btn.id = `btn-${progressKey}`;
+                btn.className = `cell-btn w-12 h-12 rounded-xl flex items-center justify-center mx-auto transition-all duration-200 hover:bg-slate-50 ${getStatusColor(status)}`;
+                btn.innerHTML = getShapeIcon(status);
+                btn.onclick = () => toggleCell(task.id, dateKey);
+                td.appendChild(btn);
+                tr.appendChild(td);
+            });
+
+            const tdAction = document.createElement('td');
+            tdAction.className = "p-2 text-center";
+            tdAction.innerHTML = `<button onclick="removeTask('${task.id}')" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all p-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+            tr.appendChild(tdAction);
+            tbody.appendChild(tr);
+        });
+        lucide.createIcons();
+    }
+
+    init();
+</script>
+</body>
+</html>
+
