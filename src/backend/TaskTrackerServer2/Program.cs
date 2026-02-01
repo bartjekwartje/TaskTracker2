@@ -117,8 +117,37 @@ app.MapDelete("/api/tasks/{id}", async (string id) =>
     return Results.NoContent();
 });
 
+// 5. PUT: Move a task to a different group
+app.MapPut("/api/tasks/{id}/move", async (string id, MoveTaskRequest req) =>
+{
+    using var connection = new NpgsqlConnection(connectionString);
+
+    // First, ensure the new group exists
+    const string ensureGroupSql = "INSERT INTO groups (name) VALUES (@GroupName) ON CONFLICT (name) DO NOTHING";
+    await connection.ExecuteAsync(ensureGroupSql, new { GroupName = req.NewGroupName });
+
+    // Then update the task's group
+    const string updateTaskSql = @"
+        UPDATE tasks
+        SET group_name = @NewGroupName
+        WHERE id = @Id";
+
+    var rowsAffected = await connection.ExecuteAsync(updateTaskSql, new {
+        Id = id,
+        NewGroupName = req.NewGroupName
+    });
+
+    if (rowsAffected == 0)
+    {
+        return Results.NotFound($"Task with ID {id} not found.");
+    }
+
+    return Results.NoContent();
+});
+
 app.Run();
 
 // --- Data Models ---
 public record TaskRequest(string Name, string GroupName, string CategoryName);
 public record ProgressRequest(string TaskId, string Date, int Status);
+public record MoveTaskRequest(string NewGroupName);
