@@ -19,11 +19,24 @@
 
         /* Modal Animation */
         .modal-backdrop { background-color: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px); }
+
+        /* Always-visible add task footer */
+        #addTaskFooter {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 40;
+            background: white;
+            border-top: 1px solid #e2e8f0;
+            box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.07);
+            padding: 1rem 1.5rem;
+        }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen p-4 md:p-8">
 
-    <div class="max-w-6xl mx-auto bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+    <div class="max-w-6xl mx-auto bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-28">
         <!-- Header Section -->
         <div class="bg-white p-6 border-b border-slate-100">
             <div class="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -95,8 +108,11 @@
             </table>
         </div>
 
-        <!-- Add Task Footer -->
-        <div class="p-6 bg-slate-50/50 border-t border-slate-100">
+    </div>
+
+    <!-- Add Task Footer (fixed) -->
+    <div id="addTaskFooter">
+        <div class="max-w-6xl mx-auto">
             <form id="addTaskForm" class="flex flex-col sm:flex-row gap-3">
                 <input type="text" id="taskName" placeholder="Describe the task..."
                     class="flex-1 px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" required>
@@ -104,6 +120,7 @@
                 <select id="taskType" class="px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-600 focus:outline-none">
                     <option value="checklist">Checkbox (Status)</option>
                     <option value="counter">Counter (Quantity)</option>
+                    <option value="number">Number (Numeric value)</option>
                 </select>
 
                 <button type="submit" class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2">
@@ -111,6 +128,9 @@
                 </button>
                 <button type="button" id="toggleKeyboard" class="p-3 bg-slate-200 hover:bg-slate-300 text-slate-600 font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center" aria-label="Toggle virtual keyboard">
                     <i data-lucide="keyboard" class="w-5 h-5"></i>
+                </button>
+                <button type="button" id="toggleDecrement" class="p-3 bg-slate-200 hover:bg-slate-300 text-slate-600 font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center" aria-label="Toggle decrement mode" aria-pressed="false">
+                    <i data-lucide="minus" class="w-5 h-5"></i>
                 </button>
             </form>
         </div>
@@ -161,6 +181,9 @@
         let selectedGroup = 'General';
         let allGroups = ['General'];
         let moveMenu = null; // For the move task dropdown
+        let isDecrementMode = false;
+        let durations = {};
+        let activeTimer = null; // { taskId, dateStr, startTime, baseSeconds, intervalId }
         // API Configuration
         let currentApiEnvironment;
 
@@ -250,6 +273,7 @@
                 const data = await res.json();
                 tasks = data.tasks || [];
                 progress = data.progress || {};
+                durations = data.durations || {};
 
                 // Update groups list based on existing tasks + General
                 const taskGroups = [...new Set(tasks.map(h => h.group))];
@@ -373,6 +397,14 @@
         document.addEventListener('DOMContentLoaded', () => {
             // Click handler for delete buttons, cell buttons, and group tabs
             document.addEventListener('click', (e) => {
+                const timerBtn = e.target.closest('.timer-btn');
+                if (timerBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleTaskTimer(timerBtn.getAttribute('data-task-id'));
+                    return;
+                }
+
                 const deleteBtn = e.target.closest('.delete-btn');
                 if (deleteBtn) {
                     e.preventDefault(); e.stopPropagation();
@@ -405,12 +437,18 @@
 
                 const cellBtn = e.target.closest('.cell-btn');
                 if (cellBtn) {
+                    const type = cellBtn.getAttribute('data-type');
+                    if (type === 'number') {
+                        editNumberCell(cellBtn);
+                        return;
+                    }
+                    const direction = (type === 'counter' && isDecrementMode) ? -1 : 1;
                     toggleCell(
                         cellBtn.getAttribute('data-task-id'),
                         cellBtn.getAttribute('data-date'),
                         parseInt(cellBtn.getAttribute('data-status')),
-                        cellBtn.getAttribute('data-type'),
-                        1
+                        type,
+                        direction
                     );
                     return;
                 }
@@ -472,6 +510,26 @@
                     virtualKeyboard.classList.add('hidden'); // Ensure keyboard is hidden when disabled
                 }
             }
+
+            // Decrement mode toggle
+            const toggleDecrementButton = document.getElementById('toggleDecrement');
+
+            function updateDecrementButtonVisualState() {
+                if (isDecrementMode) {
+                    toggleDecrementButton.classList.add('bg-red-500', 'text-white');
+                    toggleDecrementButton.classList.remove('bg-slate-200', 'text-slate-600');
+                    toggleDecrementButton.setAttribute('aria-pressed', 'true');
+                } else {
+                    toggleDecrementButton.classList.remove('bg-red-500', 'text-white');
+                    toggleDecrementButton.classList.add('bg-slate-200', 'text-slate-600');
+                    toggleDecrementButton.setAttribute('aria-pressed', 'false');
+                }
+            }
+
+            toggleDecrementButton.addEventListener('click', () => {
+                isDecrementMode = !isDecrementMode;
+                updateDecrementButtonVisualState();
+            });
 
             // Toggle the feature on/off
             toggleKeyboardButton.addEventListener('click', () => {
@@ -607,12 +665,138 @@
             return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         }
 
+        function formatDuration(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+            return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        }
+
+        function getTimerDisplay(taskId) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const key = `${taskId}_${todayStr}`;
+            const isRunning = activeTimer && activeTimer.taskId === taskId;
+
+            let displaySeconds;
+            if (isRunning) {
+                const elapsed = Math.floor((Date.now() - activeTimer.startTime) / 1000);
+                displaySeconds = activeTimer.baseSeconds + elapsed;
+            } else {
+                displaySeconds = durations[key] || 0;
+            }
+
+            if (isRunning) {
+                return `<button class="timer-btn flex items-center gap-1 text-xs font-mono font-bold text-amber-500" data-task-id="${taskId}">
+                    <i data-lucide="square" class="w-3 h-3 fill-amber-500 pointer-events-none"></i>
+                    <span class="pointer-events-none">${formatDuration(displaySeconds)}</span>
+                </button>`;
+            }
+            if (displaySeconds > 0) {
+                return `<button class="timer-btn flex items-center gap-1 text-xs font-mono text-slate-400 hover:text-amber-500 transition-colors" data-task-id="${taskId}">
+                    <i data-lucide="play" class="w-3 h-3 pointer-events-none"></i>
+                    <span class="pointer-events-none">${formatDuration(displaySeconds)}</span>
+                </button>`;
+            }
+            return `<button class="timer-btn text-slate-300 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity" data-task-id="${taskId}" aria-label="Start timer">
+                <i data-lucide="timer" class="w-3 h-3 pointer-events-none"></i>
+            </button>`;
+        }
+
+        function updateTimerDisplay() {
+            if (!activeTimer) return;
+            const elapsed = Math.floor((Date.now() - activeTimer.startTime) / 1000);
+            const total = activeTimer.baseSeconds + elapsed;
+            const btn = document.querySelector(`.timer-btn[data-task-id="${activeTimer.taskId}"]`);
+            if (btn) {
+                btn.innerHTML = `<i data-lucide="square" class="w-3 h-3 fill-amber-500 pointer-events-none"></i><span class="pointer-events-none">${formatDuration(total)}</span>`;
+                lucide.createIcons({ nodes: [btn] });
+            }
+        }
+
+        function toggleTaskTimer(taskId) {
+            if (activeTimer && activeTimer.taskId === taskId) {
+                stopTimer();
+            } else {
+                if (activeTimer) stopTimer();
+                const todayStr = new Date().toISOString().split('T')[0];
+                const baseSeconds = durations[`${taskId}_${todayStr}`] || 0;
+                activeTimer = {
+                    taskId,
+                    dateStr: todayStr,
+                    startTime: Date.now(),
+                    baseSeconds,
+                    intervalId: setInterval(updateTimerDisplay, 1000)
+                };
+                render();
+            }
+        }
+
+        function stopTimer() {
+            if (!activeTimer) return;
+            clearInterval(activeTimer.intervalId);
+            const elapsed = Math.floor((Date.now() - activeTimer.startTime) / 1000);
+            const totalSeconds = activeTimer.baseSeconds + elapsed;
+            const { taskId, dateStr } = activeTimer;
+            durations[`${taskId}_${dateStr}`] = totalSeconds;
+            activeTimer = null;
+            render();
+            fetch(`${API_BASE}/tasks/${taskId}/duration`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date: dateStr, seconds: totalSeconds })
+            }).catch(() => fetchData());
+        }
+
         function getIconForLevel(status, type) {
             if (type === 'counter') {
                 return `<span class="font-bold text-blue-600 pointer-events-none select-none">${status || 0}</span>`;
             }
+            if (type === 'number') {
+                if (!status) return `<span class="text-slate-300 pointer-events-none select-none text-sm">—</span>`;
+                return `<span class="font-bold text-purple-600 pointer-events-none select-none">${status}</span>`;
+            }
             if (status === 1) return `<i data-lucide="check-circle-2" class="w-6 h-6 text-emerald-500 fill-emerald-50 pointer-events-none"></i>`;
             return `<div class="w-5 h-5 rounded-md border-2 border-slate-200 bg-white pointer-events-none"></div>`;
+        }
+
+        function editNumberCell(cellBtn) {
+            const taskId = cellBtn.getAttribute('data-task-id');
+            const dateStr = cellBtn.getAttribute('data-date');
+            const currentStatus = parseInt(cellBtn.getAttribute('data-status')) || 0;
+
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.value = currentStatus || '';
+            input.style.cssText = 'width:3rem;text-align:center;font-weight:700;color:#9333ea;border:1px solid #d8b4fe;border-radius:0.375rem;outline:none;background:transparent;';
+
+            cellBtn.innerHTML = '';
+            cellBtn.appendChild(input);
+            input.focus();
+            if (currentStatus) input.select();
+
+            let saved = false;
+            async function save() {
+                if (saved) return;
+                saved = true;
+                const val = parseInt(input.value);
+                const newStatus = isNaN(val) ? 0 : val;
+                progress[`${taskId}_${dateStr}`] = newStatus;
+                render();
+                try {
+                    await fetch(`${API_BASE}/progress`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ taskId, date: dateStr, status: newStatus })
+                    });
+                } catch (err) { fetchData(); }
+            }
+
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') input.blur();
+                if (e.key === 'Escape') render();
+            });
         }
 
         function render() {
@@ -637,16 +821,23 @@
                 <tr data-task-id="${task.id}" class="group hover:bg-slate-50/50 transition-colors">
                     <td class="p-6 sticky left-0 bg-white group-hover:bg-slate-50/50 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                         <div class="font-semibold text-slate-700">${task.name}</div>
-                        <div class="text-[10px] text-slate-400 font-bold uppercase mt-0.5">${task.type}</div>
+                        <div class="flex items-center gap-2 mt-1">
+                            <span class="text-[10px] text-slate-400 font-bold uppercase">${task.type}</span>
+                            ${getTimerDisplay(task.id)}
+                        </div>
                     </td>
                     ${weekDates.map(date => {
                         const status = progress[`${task.id}_${date}`] || 0;
+                        const duration = durations[`${task.id}_${date}`] || 0;
                         return `
                         <td class="p-2 text-center">
-                            <button class="cell-btn w-12 h-12 mx-auto rounded-2xl border border-transparent hover:border-slate-200 hover:bg-white flex items-center justify-center cell-transition select-none"
-                                data-task-id="${task.id}" data-date="${date}" data-status="${status}" data-type="${task.type}">
-                                ${getIconForLevel(status, task.type)}
-                            </button>
+                            <div class="flex flex-col items-center gap-0.5">
+                                <button class="cell-btn w-12 h-12 mx-auto rounded-2xl border border-transparent hover:border-slate-200 hover:bg-white flex items-center justify-center cell-transition select-none"
+                                    data-task-id="${task.id}" data-date="${date}" data-status="${status}" data-type="${task.type}">
+                                    ${getIconForLevel(status, task.type)}
+                                </button>
+                                ${duration > 0 ? `<span class="text-[10px] font-mono text-slate-400">${formatDuration(duration)}</span>` : ''}
+                            </div>
                         </td>`;
                     }).join('')}
                     <td class="p-4 text-right">

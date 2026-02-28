@@ -48,20 +48,22 @@ app.MapGet("/api/week-data", async () =>
     using var connection = new NpgsqlConnection(connectionString);
 
     const string tasksQuery = "SELECT id, name, group_name AS \"group\", category_name AS type FROM tasks";
-    const string progressQuery = "SELECT task_id, log_date, status FROM progress";
+    const string progressQuery = "SELECT task_id, log_date, status, duration_seconds FROM progress";
 
     var tasks = await connection.QueryAsync<object>(tasksQuery);
     var progressData = await connection.QueryAsync<dynamic>(progressQuery);
 
     var progressDict = new Dictionary<string, int>();
+    var durationsDict = new Dictionary<string, int>();
     foreach (var p in progressData)
     {
-        // Format date to ISO string for the frontend key
         string dateKey = $"{p.task_id}_{p.log_date:yyyy-MM-dd}";
         progressDict[dateKey] = p.status;
+        if (p.duration_seconds > 0)
+            durationsDict[dateKey] = p.duration_seconds;
     }
 
-    return Results.Ok(new { tasks, progress = progressDict });
+    return Results.Ok(new { tasks, progress = progressDict, durations = durationsDict });
 });
 
 // 2. POST: Add a new task
@@ -145,9 +147,25 @@ app.MapPut("/api/tasks/{id}/move", async (string id, MoveTaskRequest req) =>
     return Results.NoContent();
 });
 
+// 6. PUT: Update duration for a task (always per-day)
+app.MapPut("/api/tasks/{id}/duration", async (string id, DurationRequest req) =>
+{
+    using var connection = new NpgsqlConnection(connectionString);
+
+    const string sql = @"
+        INSERT INTO progress (task_id, log_date, status, duration_seconds)
+        VALUES (@TaskId, @Date::date, 0, @Seconds)
+        ON CONFLICT (task_id, log_date)
+        DO UPDATE SET duration_seconds = EXCLUDED.duration_seconds, updated_at = CURRENT_TIMESTAMP";
+
+    await connection.ExecuteAsync(sql, new { TaskId = id, req.Date, req.Seconds });
+    return Results.NoContent();
+});
+
 app.Run();
 
 // --- Data Models ---
 public record TaskRequest(string Name, string GroupName, string CategoryName);
 public record ProgressRequest(string TaskId, string Date, int Status);
 public record MoveTaskRequest(string NewGroupName);
+public record DurationRequest(string Date, int Seconds);

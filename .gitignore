@@ -1,0 +1,81 @@
+############################
+# .NET Build & Artifacts
+############################
+[Bb]in/
+[Oo]bj/
+*.exe
+*.dll
+*.pdb
+*.cache
+*.com
+*.class
+*.exe.config
+*.dll.config
+
+############################
+# Rider / JetBrains / VS
+############################
+.idea/
+*.sln.iml
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.rsuser
+# Rider's local run configurations (unless you want to share them)
+.run/
+
+############################
+# Packages & Tools
+############################
+# Standard NuGet folder
+packages/
+# NuGet restore artifacts
+project.lock.json
+project.assets.json
+
+############################
+# OS / System
+############################
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*.swp
+*~
+
+############################
+# Security & Env (CRITICAL)
+############################
+.env
+.env.*
+**/secrets.json
+**/appsettings.Development.json
+# Crash dumps
+*.dmp
+*.stackdump
+
+############################
+# Docker & Data
+############################
+docker-data/
+volumes/
+docker-compose.override.yml
+
+############################
+# Web & Frontend (If applicable)
+############################
+node_modules/
+dist/
+.ext/
+
+############################
+# Logs & Testing
+############################
+*.log
+TestResults/
+artifacts/
+publish/
+coverage/
+*.coverage
+*.coveragexml
