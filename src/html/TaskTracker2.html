@@ -275,6 +275,20 @@
                 progress = data.progress || {};
                 durations = data.durations || {};
 
+                // Restore running timer from server
+                if (activeTimer) clearInterval(activeTimer.intervalId);
+                activeTimer = null;
+                if (data.activeTimer) {
+                    const { taskId, baseSeconds } = data.activeTimer;
+                    activeTimer = {
+                        taskId,
+                        dateStr: new Date().toISOString().split('T')[0],
+                        startTime: Date.now(),
+                        baseSeconds,
+                        intervalId: setInterval(updateTimerDisplay, 1000)
+                    };
+                }
+
                 // Update groups list based on existing tasks + General
                 const taskGroups = [...new Set(tasks.map(h => h.group))];
                 allGroups = [...new Set(['General', ...taskGroups])];
@@ -729,6 +743,11 @@
                     intervalId: setInterval(updateTimerDisplay, 1000)
                 };
                 render();
+                fetch(`${API_BASE}/timers/${taskId}/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ baseSeconds })
+                }).catch(() => {});
             }
         }
 
@@ -741,11 +760,10 @@
             durations[`${taskId}_${dateStr}`] = totalSeconds;
             activeTimer = null;
             render();
-            fetch(`${API_BASE}/tasks/${taskId}/duration`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ date: dateStr, seconds: totalSeconds })
-            }).catch(() => fetchData());
+            fetch(`${API_BASE}/timers/${taskId}/stop`, { method: 'POST' })
+                .then(res => res.ok ? res.json() : null)
+                .then(data => { if (data) durations[`${taskId}_${dateStr}`] = data.totalSeconds; })
+                .catch(() => fetchData());
         }
 
         function getIconForLevel(status, type) {

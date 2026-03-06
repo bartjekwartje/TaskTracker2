@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS running_timers (
+    task_id      VARCHAR(50) PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+    started_at   TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    base_seconds INT         NOT NULL DEFAULT 0
+);
