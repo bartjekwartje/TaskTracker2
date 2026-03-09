@@ -13,6 +13,9 @@
         .row-deleting { opacity: 0.5; pointer-events: none; transition: opacity 0.3s ease; }
         .delete-btn i { pointer-events: none; }
         .move-btn i { pointer-events: none; }
+        .convert-btn i { pointer-events: none; }
+        .note-btn i { pointer-events: none; }
+        .history-btn i { pointer-events: none; }
         /* Hide scrollbar but keep functionality */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -78,7 +81,7 @@
         <!-- Groups Navigation -->
         <div class="px-6 py-4 flex items-center gap-4 border-b border-slate-50 overflow-hidden">
             <button onclick="openGroupModal()" class="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-full text-sm font-bold transition-all border border-emerald-100">
-                <i data-lucide="plus" class="w-4 h-4"></i> Add Group
+                <i data-lucide="plus" class="w-4 h-4"></i> dd Group
             </button>
             <div class="h-6 w-px bg-slate-200"></div>
             <div id="groupTabs" class="flex gap-2 overflow-x-auto no-scrollbar">
@@ -121,6 +124,7 @@
                     <option value="checklist">Checkbox (Status)</option>
                     <option value="counter">Counter (Quantity)</option>
                     <option value="number">Number (Numeric value)</option>
+                    <option value="kaizen">Kaizen (Progress)</option>
                 </select>
 
                 <button type="submit" class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2">
@@ -163,6 +167,47 @@
         <span id="errorText">Error message here.</span>
     </div>
 
+    <!-- Note Modal -->
+    <div id="noteModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 border border-slate-200">
+            <h2 class="text-xl font-bold text-slate-800 mb-1">Add Note</h2>
+            <p id="noteModalSubtitle" class="text-sm text-slate-400 mb-4"></p>
+            <textarea id="noteText" rows="4" placeholder="Write a note for this day..."
+                class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 outline-none resize-none text-slate-700"></textarea>
+            <div class="flex gap-3 pt-4">
+                <button onclick="closeNoteModal()" class="flex-1 px-4 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-all">
+                    Cancel
+                </button>
+                <button onclick="saveNote()" class="flex-1 px-4 py-3 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 shadow-lg shadow-amber-500/20 transition-all">
+                    Save
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div id="historyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 border border-slate-200 max-h-[80vh] flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-800">History</h2>
+                    <p id="historyModalSubtitle" class="text-sm text-slate-400"></p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="historyFilterToggle" onclick="toggleHistoryFilter()" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors" title="Toggle filter">
+                        Active only
+                    </button>
+                    <button onclick="closeHistoryModal()" class="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="historyContent" class="overflow-y-auto flex-1 space-y-2 pr-1">
+                <!-- History rows injected here -->
+            </div>
+        </div>
+    </div>
+
     <!-- Virtual Keyboard -->
     <div id="virtualKeyboard" class="hidden fixed bottom-0 left-0 right-0 bg-slate-100 dark:bg-slate-800 p-2 z-[100] shadow-lg border-t border-slate-200 dark:border-slate-700">
         <div id="keyboardContainer" class="max-w-4xl mx-auto">
@@ -174,7 +219,7 @@
     </div>
 
     <script>
-        let API_BASE;
+        const API_BASE = window.location.origin + '/api';
         let currentViewDate = new Date();
         let tasks = [];
         let progress = {};
@@ -183,27 +228,9 @@
         let moveMenu = null; // For the move task dropdown
         let isDecrementMode = false;
         let durations = {};
+        let notes = {};
         let activeTimer = null; // { taskId, dateStr, startTime, baseSeconds, intervalId }
-        // API Configuration
-        let currentApiEnvironment;
-
-        const API_CONFIG = {
-            production: "https://www.kempenexpress.nl/TaskTracker2/api",
-            development: "https://dev.kempenexpress.nl/TaskTracker2/api"
-        };
-
-        // Auto-detect environment based on hostname
-        function detectEnvironment() {
-            const hostname = window.location.hostname;
-            if (hostname.includes('dev.kempenexpress.nl')) return 'dev';
-            if (hostname.includes('www.kempenexpress.nl')) return 'prod';
-            return 'prod'; // Default to production
-        }
-
-
-        function setApiBase() {
-            API_BASE = currentApiEnvironment === 'dev' ? API_CONFIG.development : API_CONFIG.production;
-        }
+        let noteModalState = null; // { taskId, dateStr, taskName }
 
         function showError(msg) {
             const box = document.getElementById('errorBox');
@@ -274,6 +301,7 @@
                 tasks = data.tasks || [];
                 progress = data.progress || {};
                 durations = data.durations || {};
+                notes = data.notes || {};
 
                 // Restore running timer from server
                 if (activeTimer) clearInterval(activeTimer.intervalId);
@@ -334,6 +362,132 @@
             }
         }
 
+        async function convertToKaizen(taskId) {
+            try {
+                const res = await fetch(`${API_BASE}/tasks/${taskId}/type`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ categoryName: 'kaizen' })
+                });
+                if (res.ok) await fetchData();
+                else showError("Conversion failed.");
+            } catch (err) {
+                showError("Network error.");
+            }
+        }
+
+        function openNoteModal(taskId, dateStr, taskName) {
+            noteModalState = { taskId, dateStr, taskName };
+            const key = `${taskId}_${dateStr}`;
+            document.getElementById('noteText').value = notes[key] || '';
+            document.getElementById('noteModalSubtitle').textContent = `${taskName} — ${formatDisplayDate(dateStr)}`;
+            document.getElementById('noteModal').classList.remove('hidden');
+            setTimeout(() => document.getElementById('noteText').focus(), 50);
+        }
+
+        function closeNoteModal() {
+            document.getElementById('noteModal').classList.add('hidden');
+            noteModalState = null;
+        }
+
+        async function saveNote() {
+            if (!noteModalState) return;
+            const { taskId, dateStr } = noteModalState;
+            const note = document.getElementById('noteText').value.trim();
+            const key = `${taskId}_${dateStr}`;
+            notes[key] = note;
+            closeNoteModal();
+            try {
+                await fetch(`${API_BASE}/notes`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ taskId, date: dateStr, note })
+                });
+            } catch (err) { showError("Failed to save note."); }
+        }
+
+        let historyState = null; // { task, rows, activeOnly }
+
+        function renderHistoryRows() {
+            if (!historyState) return;
+            const { task, rows, activeOnly } = historyState;
+            const filtered = activeOnly
+                ? rows.filter(r => r.status !== 0 || r.duration_seconds > 0 || (r.note && r.note.length > 0))
+                : rows;
+
+            const btn = document.getElementById('historyFilterToggle');
+            btn.classList.toggle('bg-blue-600', activeOnly);
+            btn.classList.toggle('text-white', activeOnly);
+            btn.classList.toggle('bg-slate-100', !activeOnly);
+            btn.classList.toggle('text-slate-500', !activeOnly);
+
+            if (!filtered.length) {
+                document.getElementById('historyContent').innerHTML = '<p class="text-slate-400 text-sm text-center py-4">No entries to show.</p>';
+                return;
+            }
+            document.getElementById('historyContent').innerHTML = filtered.map(row => {
+                const statusHtml = getIconForLevel(row.status, task.type);
+                const durHtml = row.duration_seconds > 0
+                    ? `<span class="text-xs font-mono text-slate-400 ml-2">${formatDuration(row.duration_seconds)}</span>`
+                    : '';
+                const noteHtml = row.note
+                    ? `<p class="text-sm text-slate-600 mt-1 italic">"${row.note}"</p>`
+                    : '';
+                return `
+                    <div class="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                        <div class="flex-shrink-0 w-8 h-8 flex items-center justify-center">${statusHtml}</div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-semibold text-slate-700">${formatDisplayDate(row.date)}</span>
+                                ${durHtml}
+                            </div>
+                            ${noteHtml}
+                        </div>
+                    </div>`;
+            }).join('');
+            lucide.createIcons({ nodes: [document.getElementById('historyContent')] });
+        }
+
+        function toggleHistoryFilter() {
+            if (!historyState) return;
+            historyState.activeOnly = !historyState.activeOnly;
+            renderHistoryRows();
+        }
+
+        async function openHistoryModal(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+            historyState = { task, rows: [], activeOnly: true };
+            document.getElementById('historyModalSubtitle').textContent = task.name;
+            document.getElementById('historyContent').innerHTML = '<p class="text-slate-400 text-sm text-center py-4">Loading...</p>';
+            document.getElementById('historyModal').classList.remove('hidden');
+            lucide.createIcons({ nodes: [document.getElementById('historyModal')] });
+
+            // Sync toggle button initial state
+            const btn = document.getElementById('historyFilterToggle');
+            btn.classList.add('bg-blue-600', 'text-white');
+            btn.classList.remove('bg-slate-100', 'text-slate-500');
+
+            try {
+                const res = await fetch(`${API_BASE}/tasks/${taskId}/history`);
+                if (!res.ok) throw new Error('Failed');
+                const rows = await res.json();
+                historyState.rows = rows;
+                if (!rows.length) {
+                    document.getElementById('historyContent').innerHTML = '<p class="text-slate-400 text-sm text-center py-4">No history yet.</p>';
+                    return;
+                }
+                renderHistoryRows();
+            } catch (err) {
+                document.getElementById('historyContent').innerHTML = '<p class="text-red-400 text-sm text-center py-4">Failed to load history.</p>';
+            }
+        }
+
+        function closeHistoryModal() {
+            document.getElementById('historyModal').classList.add('hidden');
+            historyState = null;
+        }
+
         async function moveTask(taskId, newGroup) {
             const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
             if (row) row.classList.add('row-deleting'); // Optimistic fade out
@@ -389,6 +543,8 @@
             if (type === 'counter') {
                 nextStatus = (currentStatus || 0) + direction;
                 if (nextStatus < 0) nextStatus = 0;
+            } else if (type === 'kaizen') {
+                nextStatus = ((currentStatus || 0) + direction + 6) % 6;
             } else {
                 nextStatus = ((currentStatus || 0) + 1) % 2;
             }
@@ -426,6 +582,34 @@
                     return;
                 }
 
+                const convertBtn = e.target.closest('.convert-btn');
+                if (convertBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    convertToKaizen(convertBtn.getAttribute('data-task-id'));
+                    return;
+                }
+
+                const noteBtn = e.target.closest('.note-btn');
+                if (noteBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openNoteModal(
+                        noteBtn.getAttribute('data-task-id'),
+                        noteBtn.getAttribute('data-date'),
+                        noteBtn.getAttribute('data-task-name')
+                    );
+                    return;
+                }
+
+                const historyBtn = e.target.closest('.history-btn');
+                if (historyBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openHistoryModal(historyBtn.getAttribute('data-task-id'));
+                    return;
+                }
+
                 const moveBtn = e.target.closest('.move-btn');
                 if (moveBtn) {
                     e.preventDefault();
@@ -456,7 +640,7 @@
                         editNumberCell(cellBtn);
                         return;
                     }
-                    const direction = (type === 'counter' && isDecrementMode) ? -1 : 1;
+                    const direction = ((type === 'counter' || type === 'kaizen') && isDecrementMode) ? -1 : 1;
                     toggleCell(
                         cellBtn.getAttribute('data-task-id'),
                         cellBtn.getAttribute('data-date'),
@@ -473,10 +657,11 @@
                 }
             });
 
-            // Right-click handler for counter decrement
+            // Right-click handler for counter/kaizen decrement
             document.addEventListener('contextmenu', (e) => {
                 const cellBtn = e.target.closest('.cell-btn');
-                if (cellBtn && cellBtn.getAttribute('data-type') === 'counter') {
+                const cellType = cellBtn && cellBtn.getAttribute('data-type');
+                if (cellBtn && (cellType === 'counter' || cellType === 'kaizen')) {
                     e.preventDefault();
                     toggleCell(
                         cellBtn.getAttribute('data-task-id'),
@@ -656,8 +841,7 @@
             updateKeyboardButtonVisualState(); // Set initial button style
             // --- End Virtual Keyboard Logic ---
 
-            currentApiEnvironment = detectEnvironment();
-            setApiBase();            // Initialize the application
+            // Initialize the application
             fetchData();
         });
 
@@ -721,11 +905,16 @@
             if (!activeTimer) return;
             const elapsed = Math.floor((Date.now() - activeTimer.startTime) / 1000);
             const total = activeTimer.baseSeconds + elapsed;
+            const formatted = formatDuration(total);
+
             const btn = document.querySelector(`.timer-btn[data-task-id="${activeTimer.taskId}"]`);
             if (btn) {
-                btn.innerHTML = `<i data-lucide="square" class="w-3 h-3 fill-amber-500 pointer-events-none"></i><span class="pointer-events-none">${formatDuration(total)}</span>`;
+                btn.innerHTML = `<i data-lucide="square" class="w-3 h-3 fill-amber-500 pointer-events-none"></i><span class="pointer-events-none">${formatted}</span>`;
                 lucide.createIcons({ nodes: [btn] });
             }
+
+            const cellDisplay = document.querySelector(`.timer-cell-display[data-task-id="${activeTimer.taskId}"]`);
+            if (cellDisplay) cellDisplay.textContent = formatted;
         }
 
         function toggleTaskTimer(taskId) {
@@ -760,11 +949,29 @@
             durations[`${taskId}_${dateStr}`] = totalSeconds;
             activeTimer = null;
             render();
-            fetch(`${API_BASE}/timers/${taskId}/stop`, { method: 'POST' })
-                .then(res => res.ok ? res.json() : null)
-                .then(data => { if (data) durations[`${taskId}_${dateStr}`] = data.totalSeconds; })
-                .catch(() => fetchData());
+            fetch(`${API_BASE}/timers/${taskId}/stop`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ totalSeconds })
+            }).catch(() => {});
         }
+
+        const KAIZEN_ICONS = [
+            `<div class="w-5 h-5 rounded-md border-2 border-slate-200 bg-white pointer-events-none"></div>`,
+            `<div class="w-2.5 h-2.5 rounded-full bg-slate-400 pointer-events-none" title="Worked on it"></div>`,
+            `<i data-lucide="plus" class="w-6 h-6 text-blue-500 pointer-events-none" title="Improved it"></i>`,
+            `<i data-lucide="circle" class="w-6 h-6 text-emerald-500 pointer-events-none" title="Finished it"></i>`,
+            `<i data-lucide="circle-plus" class="w-6 h-6 text-violet-500 pointer-events-none" title="Finished &amp; improved"></i>`,
+            `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" class="pointer-events-none">
+                <polygon points="2,12 6,3 12,12"    fill="#fef9c3" stroke="#b45309" stroke-width="0.6"/>
+                <polygon points="6,3 18,3 12,12"    fill="#fde68a" stroke="#b45309" stroke-width="0.6"/>
+                <polygon points="12,12 18,3 22,12"  fill="#fcd34d" stroke="#b45309" stroke-width="0.6"/>
+                <polygon points="2,12 22,12 12,17"  fill="#fbbf24" stroke="#b45309" stroke-width="0.6"/>
+                <polygon points="2,12 12,17 12,22"  fill="#f59e0b" stroke="#b45309" stroke-width="0.6"/>
+                <polygon points="22,12 12,22 12,17" fill="#d97706" stroke="#b45309" stroke-width="0.6"/>
+                <polygon points="6,3 18,3 22,12 12,22 2,12" fill="none" stroke="#92400e" stroke-width="1" stroke-linejoin="round"/>
+            </svg>`,
+        ];
 
         function getIconForLevel(status, type) {
             if (type === 'counter') {
@@ -773,6 +980,9 @@
             if (type === 'number') {
                 if (!status) return `<span class="text-slate-300 pointer-events-none select-none text-sm">—</span>`;
                 return `<span class="font-bold text-purple-600 pointer-events-none select-none">${status}</span>`;
+            }
+            if (type === 'kaizen') {
+                return KAIZEN_ICONS[status] ?? KAIZEN_ICONS[0];
             }
             if (status === 1) return `<i data-lucide="check-circle-2" class="w-6 h-6 text-emerald-500 fill-emerald-50 pointer-events-none"></i>`;
             return `<div class="w-5 h-5 rounded-md border-2 border-slate-200 bg-white pointer-events-none"></div>`;
@@ -847,19 +1057,40 @@
                     ${weekDates.map(date => {
                         const status = progress[`${task.id}_${date}`] || 0;
                         const duration = durations[`${task.id}_${date}`] || 0;
+                        const noteKey = `${task.id}_${date}`;
+                        const hasNote = !!(notes[noteKey] && notes[noteKey].length > 0);
+                        const isRunning = activeTimer && activeTimer.taskId === task.id && activeTimer.dateStr === date;
+                        let cellDurationHtml = '';
+                        if (isRunning) {
+                            const elapsed = Math.floor((Date.now() - activeTimer.startTime) / 1000);
+                            const total = activeTimer.baseSeconds + elapsed;
+                            cellDurationHtml = `<span class="timer-cell-display text-[10px] font-mono font-bold text-amber-500" data-task-id="${task.id}">${formatDuration(total)}</span>`;
+                        } else if (duration > 0) {
+                            cellDurationHtml = `<span class="text-[10px] font-mono text-slate-400">${formatDuration(duration)}</span>`;
+                        }
+                        const noteBtnHtml = hasNote
+                            ? `<button class="note-btn w-4 h-4 flex items-center justify-center" data-task-id="${task.id}" data-date="${date}" data-task-name="${task.name}" title="Edit note">
+                                <span class="w-2 h-2 rounded-full bg-amber-400 pointer-events-none"></span>
+                               </button>`
+                            : `<button class="note-btn w-4 h-4 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity text-slate-300 hover:text-amber-400" data-task-id="${task.id}" data-date="${date}" data-task-name="${task.name}" title="Add note">
+                                <i data-lucide="pencil" class="w-3 h-3 pointer-events-none"></i>
+                               </button>`;
                         return `
-                        <td class="p-2 text-center">
+                        <td class="p-2 text-center group/cell">
                             <div class="flex flex-col items-center gap-0.5">
                                 <button class="cell-btn w-12 h-12 mx-auto rounded-2xl border border-transparent hover:border-slate-200 hover:bg-white flex items-center justify-center cell-transition select-none"
                                     data-task-id="${task.id}" data-date="${date}" data-status="${status}" data-type="${task.type}">
                                     ${getIconForLevel(status, task.type)}
                                 </button>
-                                ${duration > 0 ? `<span class="text-[10px] font-mono text-slate-400">${formatDuration(duration)}</span>` : ''}
+                                ${cellDurationHtml}
+                                ${noteBtnHtml}
                             </div>
                         </td>`;
                     }).join('')}
                     <td class="p-4 text-right">
                         <div class="flex items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button class="history-btn p-2 text-slate-400 hover:text-amber-500" data-task-id="${task.id}" title="View history"><i data-lucide="clock" class="w-4 h-4"></i></button>
+                            ${task.type === 'checklist' ? `<button class="convert-btn p-2 text-slate-400 hover:text-violet-500" data-task-id="${task.id}" title="Convert to Kaizen"><i data-lucide="diamond" class="w-4 h-4"></i></button>` : ''}
                             <button class="move-btn p-2 text-slate-400 hover:text-blue-500" data-task-id="${task.id}" data-task-group="${task.group}">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder-move w-5 h-5 pointer-events-none">
                                     <path d="m9 18 3-3-3-3"/><path d="M12 15H3"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v2"/>

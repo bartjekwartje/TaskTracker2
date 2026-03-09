@@ -1,17 +1,10 @@
-# Stage 1: Runtime Base
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
-WORKDIR /app
-EXPOSE 80
+# Build context: repo root (TaskTrackerSolution2/)
+# Build command (from repo root):
+#   docker build -f infrastructure/DevDockerfile -t tasktracker-dev .
+# Run command:
+#   docker run -d --network host --name tasktracker-dev tasktracker-dev
 
-ENV ASPNETCORE_URLS=http://+:8080
-
-RUN apt-get update && apt-get install -y \
-    tzdata \
-    libgssapi-krb5-2 \
-    nginx \
-    && rm -rf /var/lib/apt/lists/*
-
-# Stage 2: SDK Build
+# STAGE 1: SDK build
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
@@ -19,32 +12,39 @@ COPY ["./src/backend/TaskTrackerServer2/TaskTrackerServer2.csproj", "TaskTracker
 RUN dotnet restore "TaskTrackerServer2/TaskTrackerServer2.csproj"
 
 COPY ["./src/backend/TaskTrackerServer2/.", "TaskTrackerServer2/"]
-
 WORKDIR "/src/TaskTrackerServer2"
 RUN dotnet publish "TaskTrackerServer2.csproj" -c Debug -o /app/publish /p:UseAppHost=false
 
-# Stage 3: Final
-FROM base AS final
+# STAGE 2: Runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    tzdata \
+    libgssapi-krb5-2 \
+    nginx \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy published .NET output
 COPY --from=build /app/publish .
 
-# Copy static frontend files
+# Copy HTML files served by nginx
 COPY --chown=www-data:www-data ./src/html /var/www/html
 
-# Configure nginx
+# Configure nginx and startup script
 COPY ./infrastructure/nginx-dev.conf /etc/nginx/sites-available/default
+COPY ./infrastructure/start-dev.sh /start-dev.sh
+RUN chmod +x /start-dev.sh
 
-# Startup script
-COPY ./infrastructure/start.sh /start.sh
-RUN chmod +x /start.sh
-
+# DB credentials (dev only - do not commit real credentials)
 ENV DB_HOST_IP=100.100.104.47
 ENV DB_PORT=5432
 ENV DB_USER=postgres
 ENV DB_NAME=TaskTracker2
 ENV DB_PASS=1peo2HHeel@
 ENV ASPNETCORE_ENVIRONMENT=Development
+ENV ASPNETCORE_URLS=http://+:8080
 
-ENTRYPOINT ["/start.sh"]
+EXPOSE 80
+
+ENTRYPOINT ["/start-dev.sh"]

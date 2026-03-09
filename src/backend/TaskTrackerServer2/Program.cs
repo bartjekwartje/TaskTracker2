@@ -52,10 +52,12 @@ app.MapGet("/api/week-data", async () =>
     const string runningTimerQuery = @"
         SELECT task_id, base_seconds + EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at))::int AS base_seconds
         FROM running_timers LIMIT 1";
+    const string notesQuery = "SELECT task_id, log_date, note FROM task_notes";
 
     var tasks = await connection.QueryAsync<object>(tasksQuery);
     var progressData = await connection.QueryAsync<dynamic>(progressQuery);
     var runningTimer = await connection.QueryFirstOrDefaultAsync<dynamic>(runningTimerQuery);
+    var notesData = await connection.QueryAsync<dynamic>(notesQuery);
 
     var progressDict = new Dictionary<string, int>();
     var durationsDict = new Dictionary<string, int>();
@@ -67,13 +69,20 @@ app.MapGet("/api/week-data", async () =>
             durationsDict[dateKey] = p.duration_seconds;
     }
 
+    var notesDict = new Dictionary<string, string>();
+    foreach (var n in notesData)
+    {
+        string dateKey = $"{n.task_id}_{n.log_date:yyyy-MM-dd}";
+        notesDict[dateKey] = (string)n.note;
+    }
+
     object? activeTimer = runningTimer == null ? null : new
     {
         taskId = (string)runningTimer.task_id,
         baseSeconds = (int)runningTimer.base_seconds
     };
 
-    return Results.Ok(new { tasks, progress = progressDict, durations = durationsDict, activeTimer });
+    return Results.Ok(new { tasks, progress = progressDict, durations = durationsDict, notes = notesDict, activeTimer });
 });
 
 // 2. POST: Add a new task
@@ -129,6 +138,15 @@ app.MapDelete("/api/tasks/{id}", async (string id) =>
     return Results.NoContent();
 });
 
+// 5a. PUT: Change a task's type/category
+app.MapPut("/api/tasks/{id}/type", async (string id, ChangeTypeRequest req) =>
+{
+    using var connection = new NpgsqlConnection(connectionString);
+    const string sql = "UPDATE tasks SET category_name = @CategoryName WHERE id = @Id";
+    var rows = await connection.ExecuteAsync(sql, new { Id = id, req.CategoryName });
+    return rows == 0 ? Results.NotFound() : Results.NoContent();
+});
+
 // 5. PUT: Move a task to a different group
 app.MapPut("/api/tasks/{id}/move", async (string id, MoveTaskRequest req) =>
 {
@@ -172,17 +190,11 @@ app.MapPost("/api/timers/{taskId}/start", async (string taskId, TimerStartReques
     return Results.NoContent();
 });
 
-// 7. POST: Stop a timer for a task — computes total, saves to progress, removes from running_timers
-app.MapPost("/api/timers/{taskId}/stop", async (string taskId) =>
+// 7. POST: Stop a timer for a task — saves client-computed total to progress, removes from running_timers
+app.MapPost("/api/timers/{taskId}/stop", async (string taskId, TimerStopRequest req) =>
 {
     using var connection = new NpgsqlConnection(connectionString);
 
-    const string selectSql = "SELECT task_id, started_at, base_seconds FROM running_timers WHERE task_id = @TaskId";
-    var timer = await connection.QueryFirstOrDefaultAsync<dynamic>(selectSql, new { TaskId = taskId });
-    if (timer == null) return Results.NotFound();
-
-    var elapsed = (int)(DateTime.UtcNow - (DateTime)timer.started_at).TotalSeconds;
-    var totalSeconds = (int)timer.base_seconds + elapsed;
     var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
     const string upsertSql = @"
@@ -191,12 +203,51 @@ app.MapPost("/api/timers/{taskId}/stop", async (string taskId) =>
         ON CONFLICT (task_id, log_date)
         DO UPDATE SET duration_seconds = EXCLUDED.duration_seconds, updated_at = CURRENT_TIMESTAMP";
 
-    await connection.ExecuteAsync(upsertSql, new { TaskId = taskId, Date = today, Seconds = totalSeconds });
+    await connection.ExecuteAsync(upsertSql, new { TaskId = taskId, Date = today, Seconds = req.TotalSeconds });
 
     const string deleteSql = "DELETE FROM running_timers WHERE task_id = @TaskId";
     await connection.ExecuteAsync(deleteSql, new { TaskId = taskId });
 
-    return Results.Ok(new { totalSeconds });
+    return Results.NoContent();
+});
+
+// 8. PUT: Upsert a note for a task+date
+app.MapPut("/api/notes", async (NoteRequest req) =>
+{
+    using var connection = new NpgsqlConnection(connectionString);
+
+    const string sql = @"
+        INSERT INTO task_notes (task_id, log_date, note)
+        VALUES (@TaskId, @Date::date, @Note)
+        ON CONFLICT (task_id, log_date)
+        DO UPDATE SET note = EXCLUDED.note, updated_at = CURRENT_TIMESTAMP";
+
+    await connection.ExecuteAsync(sql, new { req.TaskId, req.Date, req.Note });
+    return Results.NoContent();
+});
+
+// 9. GET: Fetch full history for a task — every day from created_at to today
+app.MapGet("/api/tasks/{id}/history", async (string id) =>
+{
+    using var connection = new NpgsqlConnection(connectionString);
+
+    const string sql = @"
+        SELECT
+            d.day::text AS date,
+            COALESCE(p.status, 0) AS status,
+            COALESCE(p.duration_seconds, 0) AS duration_seconds,
+            COALESCE(n.note, '') AS note
+        FROM generate_series(
+            (SELECT created_at::date FROM tasks WHERE id = @Id),
+            CURRENT_DATE,
+            '1 day'::interval
+        ) AS d(day)
+        LEFT JOIN progress p ON p.task_id = @Id AND p.log_date = d.day::date
+        LEFT JOIN task_notes n ON n.task_id = @Id AND n.log_date = d.day::date
+        ORDER BY d.day DESC";
+
+    var rows = await connection.QueryAsync<dynamic>(sql, new { Id = id });
+    return Results.Ok(rows);
 });
 
 app.Run();
@@ -205,4 +256,7 @@ app.Run();
 public record TaskRequest(string Name, string GroupName, string CategoryName);
 public record ProgressRequest(string TaskId, string Date, int Status);
 public record MoveTaskRequest(string NewGroupName);
+public record ChangeTypeRequest(string CategoryName);
 public record TimerStartRequest(int BaseSeconds);
+public record TimerStopRequest(int TotalSeconds);
+public record NoteRequest(string TaskId, string Date, string Note);

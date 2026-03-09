@@ -16,10 +16,15 @@ TaskTrackerSolution2/
 │   └── html/
 │       └── TaskTracker2.html         # Entire frontend (single HTML file)
 ├── infrastructure/
-│   ├── Dockerfile                    # Production: Alpine multi-stage build
-│   ├── DevDockerfile                 # Development: Debian-based
-│   └── entrypoint.sh                 # Copies HTML then starts the .NET app
-├── build_docker.sh                   # Builds & pushes to Docker Hub
+│   ├── Dockerfile                    # Production: Alpine multi-stage build (nginx + Tailscale)
+│   ├── DevDockerfile                 # Development: Debian-based (nginx, no Tailscale)
+│   ├── nginx-prod.conf               # Container nginx config (production, /api/ → :5000)
+│   ├── nginx-dev.conf                # Container nginx config (development, /api/ → :8080)
+│   ├── start.sh                      # Production startup (tailscaled + dotnet + nginx)
+│   └── start-dev.sh                  # Dev startup (dotnet + nginx only)
+├── docs/
+│   └── ARCHITECTURE.md               # Deployment & network architecture reference
+├── build_docker.sh                   # Builds & pushes to Docker Hub (run from repo root)
 └── TaskTrackerSolution2.slnx         # Solution file
 ```
 
@@ -105,13 +110,9 @@ dotnet build src/backend/TaskTrackerServer2/TaskTrackerServer2.csproj
 
 **Stack:** Vanilla JS, Tailwind CSS (CDN), Lucide icons (CDN) — all in one file: `src/html/TaskTracker2.html`.
 
-### Environment Detection
+### API Base URL
 
-The frontend auto-detects its API base URL from `window.location.hostname`:
-- `dev.kempenexpress.nl` → `https://dev.kempenexpress.nl/TaskTracker2/api`
-- `www.kempenexpress.nl` or anything else → `https://www.kempenexpress.nl/TaskTracker2/api`
-
-For local development, you must manually override `API_BASE` in the script, or serve the file via a hostname that resolves to the dev environment.
+`API_BASE` is always `window.location.origin + '/api'` — no hardcoded hostnames. Works for any subdomain because each environment gets its own subdomain (see `docs/ARCHITECTURE.md`).
 
 ### Key Frontend Behaviours
 
@@ -128,15 +129,20 @@ For local development, you must manually override `API_BASE` in the script, or s
 ./build_docker.sh
 # Builds image: bartje2/tasktracker:v2.0
 # Pushes to Docker Hub
+# (script cd's to parent dir DotNetSolutions/ for build context)
 ```
 
-The production Dockerfile (`infrastructure/Dockerfile`) uses Alpine and copies the HTML file alongside the published .NET binaries.
+Production uses Alpine, installs nginx + Tailscale, serves HTML from `/app/html`, backend on port 5000.
 
 ### Dev Docker
 
 ```bash
+# From repo root:
 docker build -f infrastructure/DevDockerfile -t tasktracker-dev .
+docker run -d --network host --name tasktracker-dev tasktracker-dev
 ```
+
+Dev uses Debian, nginx only (no Tailscale), HTML served from `/var/www/html`, backend on port 8080.
 
 > **Security warning:** `infrastructure/DevDockerfile` contains hardcoded database credentials. Do not commit real credentials — use a `.env` file or Docker secrets instead.
 
@@ -146,5 +152,5 @@ docker build -f infrastructure/DevDockerfile -t tasktracker-dev .
 - **CORS is wide open** (`AllowAnyOrigin`) — acceptable for a personal/home tool.
 - **Swashbuckle** packages are referenced in the `.csproj` but Swagger middleware is **not wired up** in `Program.cs`.
 - `src/x` appears to be a scratch/temp file and should probably be deleted or gitignored.
-- **`entrypoint.sh`** references `../src/client/*` which does not match the actual path `src/html/` — this may be a stale path if the HTML was ever served separately.
-- The `DevDockerfile` sets `ASPNETCORE_ENVIRONMENT=Development` and hardcodes a Tailscale IP (`100.100.104.47`) as the DB host — this is a personal dev machine setup.
+- The `DevDockerfile` hardcodes a Tailscale IP (`100.100.104.47`) as DB host — this is a personal dev machine setup.
+- Production Dockerfile uses Alpine nginx (`/etc/nginx/http.d/default.conf`); DevDockerfile uses Debian nginx (`/etc/nginx/sites-available/default`).
