@@ -16,8 +16,7 @@ RUN dotnet publish "TaskTrackerServer2/TaskTrackerServer2.csproj" -c Release -o 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine
 WORKDIR /app
 
-RUN apk add --no-cache tzdata krb5-libs nginx curl bash && \
-    curl -fsSL https://tailscale.com/install.sh | sh
+RUN apk add --no-cache tzdata krb5-libs nginx bash tailscale
 
 # Copy published .NET output
 COPY --from=build /app/publish .
