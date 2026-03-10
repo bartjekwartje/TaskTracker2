@@ -4,7 +4,12 @@
 
 A weekly habit/task tracker. Users create tasks organized into groups, then mark daily progress across a 7-day week view. Two task types are supported: `checklist` (done/not done) and `counter` (numeric quantity).
 
-## Architecture
+## Deployment Architecture
+
+This project follows the **aspnet-nginx-tailscale** pattern. The canonical reference (Dockerfiles, nginx configs, startup scripts, network layout) lives at:
+https://github.com/bartjekwartje/architecture/blob/main/aspnet-nginx-tailscale.md
+
+## Project Structure
 
 ```
 TaskTrackerSolution2/
