@@ -72,10 +72,10 @@ repo/
 
 ### Production (`Dockerfile`)
 
-- **Build context:** parent directory of the repo (e.g. `/home/developer/repos`)
+- **Build context:** repo root
 - **Multi-stage:** SDK build stage → ASP.NET runtime stage
-- **Installs:** nginx, curl, Tailscale (`curl -fsSL https://tailscale.com/install.sh | sh`)
-- **HTML files:** copied to `/app/html` (separate from .NET publish output at `/app`)
+- **Installs:** nginx, Tailscale (via `apk add tailscale` — do **not** use the install script, it calls `rc-update` which doesn't exist in Docker)
+- **HTML files:** copied to `/app/html` with `--chown=www-data:www-data` so nginx can serve them
 - **Startup:** `start.sh` — starts `tailscaled`, runs `tailscale up`, then dotnet, then nginx
 - **Exposes:** port 80 (nginx)
 
@@ -109,7 +109,7 @@ docker run -d --restart unless-stopped --name appname-v1 \
 - **Network:** `--network host` (shares host network, reaching DB via host Tailscale)
 - **No Tailscale** inside the container — relies on host machine's Tailscale
 - **Startup:** `start-dev.sh` — starts dotnet and nginx only
-- **HTML files:** copied to `/var/www/html`, served directly by nginx
+- **HTML files:** copied to `/var/www/html` with `--chown=www-data:www-data` so nginx can serve them
 - **DB credentials:** hardcoded as `ENV` in the Dockerfile (dev only)
 
 ---
@@ -207,6 +207,20 @@ certbot --nginx -d appname.domain.com -d appname-dev.domain.com \
 - Auth key: **reusable + ephemeral** (generate once in Tailscale admin, node auto-removes on stop)
 - Requires: `--cap-add NET_ADMIN --cap-add NET_RAW --device /dev/net/tun`
 - All Tailscale nodes get IPs in `100.64.0.0/10` (IANA CGNAT range, stable)
+
+---
+
+## Dockerfile HTML Copy Pattern
+
+nginx runs as `www-data` inside the container. Always use `--chown` when copying HTML files, or nginx will get permission errors:
+
+```dockerfile
+# Production (html at /app/html)
+COPY --chown=www-data:www-data src/html /app/html
+
+# Development (html at /var/www/html)
+COPY --chown=www-data:www-data src/html /var/www/html
+```
 
 ---
 
