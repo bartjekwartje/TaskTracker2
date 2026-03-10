@@ -1,13 +1,11 @@
 #!/bin/bash
 
-IMAGE_NAME="bartje2/tasktracker:v2.0"
-DOCKERFILE_PATH="TaskTrackerSolution2/infrastructure/Dockerfile"
+IMAGE_NAME="bartje2/tasktracker2:v1.0"
+DOCKERFILE_PATH="infrastructure/Dockerfile"
 
 echo "Starting build for $IMAGE_NAME..."
 
-# Build from parent directory (DotNetSolutions/) as context
-cd ..
-
+# Build from repo root as context
 if docker build -t $IMAGE_NAME -f $DOCKERFILE_PATH .; then
     echo "Build successful! Pushing to Docker Hub..."
     docker push $IMAGE_NAME
