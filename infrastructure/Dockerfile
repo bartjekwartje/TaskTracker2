@@ -22,7 +22,7 @@ RUN apk add --no-cache tzdata krb5-libs nginx bash tailscale
 COPY --from=build /app/publish .
 
 # Copy HTML files to /app/html (served by nginx)
-COPY src/html /app/html
+COPY --chown=www-data:www-data src/html /app/html
 
 # Configure nginx and startup script
 COPY infrastructure/nginx-prod.conf /etc/nginx/http.d/default.conf
